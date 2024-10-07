@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/gorilla/websocket"
-	"github.com/labstack/echo/v4"
 	cliv3 "go.etcd.io/etcd/client/v3"
 
 	"net/http"
@@ -105,7 +104,7 @@ func route(e *echo.Echo, cli *cliv3.Client) {
 
 	e.GET("/watch", func(c echo.Context) error {
 
-		id := "pet/1"
+		id := "1"
 
 		ch := cli.Watch(c.Request().Context(), id, cliv3.WithPrefix())
 

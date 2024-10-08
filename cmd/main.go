@@ -4,18 +4,29 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/gorilla/websocket"
+	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 	cliv3 "go.etcd.io/etcd/client/v3"
 
 	"net/http"
 )
 
 var (
-	upgrader = websocket.Upgrader{}
+	upgrader = websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool {
+			return true // Разрешаем подключения с любого источника
+		},
+	}
 )
 
 func main() {
-
 	e := echo.New()
+
+	// Добавляем middleware для CORS
+	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
+		AllowOrigins: []string{"*"},
+		AllowMethods: []string{http.MethodGet, http.MethodPut, http.MethodPost, http.MethodDelete},
+	}))
 
 	cli, err := cliv3.New(cliv3.Config{
 		Endpoints: []string{"localhost:2379"},
@@ -71,17 +82,27 @@ func route(e *echo.Echo, cli *cliv3.Client) {
 			return c.JSON(http.StatusBadRequest, err)
 		}
 
+		// Получаем текущее значение перед записью
+		getRsp, err := cli.Get(c.Request().Context(), pet.ID)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, err)
+		}
+
+		if getRsp.Count > 0 {
+			fmt.Printf("prev: %v\n", string(getRsp.Kvs[0].Value))
+		} else {
+			fmt.Printf("prev: <nil> (new key)\n")
+		}
+
 		bytePet, err := json.Marshal(pet)
 		if err != nil {
 			return c.JSON(http.StatusBadRequest, err)
 		}
 
-		rsp, err := cli.Put(c.Request().Context(), pet.ID, string(bytePet))
+		_, err = cli.Put(c.Request().Context(), pet.ID, string(bytePet))
 		if err != nil {
 			return c.JSON(http.StatusBadRequest, err)
 		}
-
-		fmt.Printf("prev: %v", rsp.PrevKv)
 
 		return c.JSON(http.StatusOK, pet)
 	})
@@ -98,13 +119,17 @@ func route(e *echo.Echo, cli *cliv3.Client) {
 			return c.JSON(http.StatusBadRequest, err)
 		}
 
-		fmt.Printf("prev: %v", rsp.PrevKvs)
+		if len(rsp.PrevKvs) > 0 {
+			fmt.Printf("prev: %v\n", string(rsp.PrevKvs[0].Value))
+		} else {
+			fmt.Printf("prev: <nil> (key did not exist)\n")
+		}
+
 		return c.String(http.StatusOK, "ok")
 	})
 
 	e.GET("/watch", func(c echo.Context) error {
-
-		id := "1"
+		id := "pet-"
 
 		ch := cli.Watch(c.Request().Context(), id, cliv3.WithPrefix())
 
@@ -114,8 +139,14 @@ func route(e *echo.Echo, cli *cliv3.Client) {
 		}
 		defer ws.Close()
 
-		for {
+		// Отправляем сообщение клиенту при успешном подключении
+		err = ws.WriteMessage(websocket.TextMessage, []byte("Connected to WebSocket server"))
+		if err != nil {
+			fmt.Println("Error sending initial message:", err)
+			return err
+		}
 
+		for {
 			select {
 			case v := <-ch:
 				value := v.Events[0].Kv.Value

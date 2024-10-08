@@ -1,39 +1,45 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-
 <head>
-    <meta charset="utf-8">
-    <title>WebSocket</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket Example</title>
 </head>
-
 <body>
-<p id="output"></p>
+<h1>WebSocket Example</h1>
+<div id="messages"></div>
 
 <script>
-    var loc = window.location;
-    var uri = 'ws:';
+    const messagesDiv = document.getElementById('messages');
 
-    if (loc.protocol === 'https:') {
-        uri = 'wss:';
+    function addMessage(message) {
+        console.log(message);
+        messagesDiv.innerHTML += '<p>' + message + '</p>';
     }
-    uri += '//' + loc.host;
-    uri += loc.pathname + 'watch';
 
-    ws = new WebSocket(uri)
+    const ws = new WebSocket('ws://localhost:9999/watch');
 
     ws.onopen = function() {
-        console.log('Connected')
-    }
-
-    ws.onmessage = function(evt) {
-        var out = document.getElementById('output');
-        out.innerHTML += evt.data + '<br>';
-    }
-
-    setInterval(function() {
+        addMessage('WebSocket connection established');
         ws.send('Hello, Server!');
-    }, 1000);
+    };
+
+    ws.onmessage = function(event) {
+        addMessage('Received: ' + event.data);
+    };
+
+    ws.onerror = function(error) {
+        addMessage('WebSocket error: ' + (error.message || 'Unknown error'));
+        console.error('WebSocket error:', error);
+    };
+
+    ws.onclose = function(event) {
+        if (event.wasClean) {
+            addMessage(`Connection closed cleanly, code=${event.code}, reason=${event.reason}`);
+        } else {
+            addMessage('Connection died');
+        }
+    };
 </script>
 </body>
-
 </html>
